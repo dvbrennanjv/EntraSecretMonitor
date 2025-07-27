@@ -1,0 +1,70 @@
+Step 4 Schema
+{
+  "type": "object",
+  "properties": {
+    "access_token": {
+      "type": "string"
+    }
+  }
+}
+
+
+Step 6 Schema
+{
+  "type": "object",
+  "properties": {
+    "@@odata.context": {
+      "type": "string"
+    },
+    "value": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "passwordCredentials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "customKeyIdentifier": {},
+                "displayName": {
+                  "type": "string"
+                },
+                "endDateTime": {
+                  "type": "string"
+                },
+                "hint": {
+                  "type": "string"
+                },
+                "keyId": {
+                  "type": "string"
+                },
+                "secretText": {},
+                "startDateTime": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "customKeyIdentifier",
+                "displayName",
+                "endDateTime",
+                "hint",
+                "keyId",
+                "secretText",
+                "startDateTime"
+              ]
+            }
+          }
+        },
+        "required": [
+          "displayName",
+          "passwordCredentials"
+        ]
+      }
+    }
+  }
+}
+
