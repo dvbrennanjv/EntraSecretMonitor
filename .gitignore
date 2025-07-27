@@ -2,3 +2,4 @@ terraform/variables.tf
 terraform/terraform.tfstate
 terraform/.terraform/*
 .terraform.lock.hcl
+terraform/entra-app-workflow.json
