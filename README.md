@@ -38,26 +38,27 @@ This project is a way to use Azure's Logic App service to monitor and notify of 
 
 ---
 ## Logic App Diagram
+![Logic App Diagram](LogicAppDiagram.png)
 ---
 
 ## How-To Guide
 
 ### Step 1: Build the Logic App in Azure Portal  
-For this project, I built the Logic App directly in the Azure Portal as it made it easier to test with. Follow this guide and at the bottom I will explain how to get this imported and working with terraform
+For this project, I built the Logic App directly in the Azure Portal as it made it easier to test with. Follow this guide and at the bottom I will explain how to get this imported and working with terraform.
+
 To begin:  
 Go to **Azure Portal → Logic Apps → Add → Consumption**.  
 We're using the **Consumption plan** here for its event-driven cost efficiency.
 
 ### Step 2: Recurrence Trigger  
 Add a **Recurrence** trigger.  
-This determines how often your Logic App runs (e.g., daily, weekly).
+This will determine how often the logic app runs. Pick whatever suits your needs best.
 
-### Step 3: Get Graph API Token  
-- Create a new **App Registration** in Entra.  
-- Assign it **Application.Read.All** (Application type) under Microsoft Graph.  
-- Create a **Client Secret**.  
+### Step 3: Get Graph API Token
+We now need to create a new **App Registration** in Entra and give it the **Application.Read.All** permissions as well as create a client secret for.
+*Note* The client secret value can only be seen after creation so make sure to note this down.  
 
-Add an **HTTP** action:
+We will need to create an **HTTP** step and input the following for.
 - **Method**: POST  
 - **URL**:  
   ```
@@ -70,7 +71,7 @@ Add an **HTTP** action:
 
 ### Step 4: Parse Token  
 Add a **Parse JSON** step to extract the token.  
-Schema is in `schema/step-4-token.json`.
+The schema for this can be found in the Schemas.txt file.
 
 ### Step 5: Call Graph API for App Secrets  
 Add another **HTTP** GET step:  
@@ -83,7 +84,7 @@ Add another **HTTP** GET step:
 
 ### Step 6: Parse Graph Response  
 Add another **Parse JSON** step using Step 5’s body.  
-Schema is in `schema/step-6-apps.json`.
+Schema is in the schemas.txt file under Step 6.
 
 ### Step 7: Initialize Array  
 Add **Initialize Variable**:  
