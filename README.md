@@ -1,12 +1,12 @@
 # Entra Secret Monitor
 
-This project is a way to use Azure's Logic App service to monitor and notify of expiring secrets in your Entra environment. This project looks at sending the output as an email but could easily be used with containers or an S3 bucket to have a static website displaying current secrets and their expiration time.
+This project is a way to use Azure's Logic App service to monitor and notify of expiring secrets in your Entra environment. This project looks at sending the output to a Azure Storage account and displaying it as a static website, however you could have it send a notification email with the HTML output as well.
 ---
 
 ## Technologies Used  
-- Azure : Logic Apps, ARM Templates, Entra
+- Azure : Logic Apps, ARM Templates, Storage Accounts, Entra
 - Terraform: Infrastructure as Code Tool  
-- HTML/CSS : For email styling
+- HTML/CSS : For styling our output
 - GitHub : Version Control
 
 ---
@@ -23,37 +23,115 @@ This project is a way to use Azure's Logic App service to monitor and notify of 
 
 ---
 ## Security & Best Practices
+
+1. **Use a system assigned managed identity**
+    Granting your Logic App access to resources (like a Storage Account) using a system-assigned managed identity is more secure and manageable than embedding credentials or using app registrations. This reduces the risk of secrets being exposed and ensures tighter integration with Azure RBAC.
+
+2. **Keep Terraform State Hidden**
+    Always store your Terraform state in a secure remote backend (such as Azure Storage with state locking enabled). This ensures collaboration and protects against data loss or corruption. If you're developing locally, make sure the .terraform directory and terraform.tfstate files are added to .gitignore to avoid leaking sensitive information via version control.
+
+3. **Tagging Infrastructure**  
+   Tagging is a best practice in infrastructure management, especially in production environments. I’ve intentionally left out tags, as tagging strategies should be tailored to your organization’s workflow and standards. I'd reccomend to define a consistent tagging policy that outlines required tags (e.g., Environment, Owner, CostCenter) and ensures meaningful metadata is applied to all resources for visibility, cost tracking, and governance.3. **Tagging **
+
+4. **Sanitize Repositories and use variables**
+    You should never hardcode sensitive values (e.g., client secrets, subscription IDs) directly in your Terraform files. Instead, store them in a terraform.tfvars file, use environment variables, or leverage secret managers (like Azure Key Vault) to inject them securely. This improves maintainability and reduces risk in version control.
+
 ---
 ## Logic App Diagram
 ---
 
 ## How-To Guide
 
-### Step 1: Building the Logic App 
-What I did for this project was the build the logic app direct in the Azure Portal and then exported the code view and create a template deployment in terraform. So will build the app and then I'll walk through the terraform steps after. I found this method alot easier for testing out the app quickly. Login to the Azure Portal --> Logic Apps --> Add --> Consumption. The hosting plan really determines what type of logic app your building, for this I felt consumption just made the most sense.
+### Step 1: Build the Logic App in Azure Portal  
+For this project, I built the Logic App directly in the Azure Portal as it made it easier to test with. Follow this guide and at the bottom I will explain how to get this imported and working with terraform
+To begin:  
+Go to **Azure Portal → Logic Apps → Add → Consumption**.  
+We're using the **Consumption plan** here for its event-driven cost efficiency.
 
-### Step 2: Recurrence Step
-Create a new step and look for recurrence. This step is how often you want this logic app to run, could be every day, week, month. Pick whatever suits your needs best.
+### Step 2: Recurrence Trigger  
+Add a **Recurrence** trigger.  
+This determines how often your Logic App runs (e.g., daily, weekly).
 
-### Step 3: Get Graph API Token
-We're going to be using Graph API to grab all of our secrets. You'll need to create a new app registration in Entra that will have Application.Read.All permissions for the Graph API. Once youc create that, create a client secret for that app registration and fill the URL and Body with below
-URL : https://login.microsoftonline.com/b2f3b82b-689c-48c4-8ad4-8916256b8cc9/oauth2/v2.0/token
-Body: client_id=YOUR_CLIENT_ID & Scope=https://graph.microsoft.com/.default& client_secret=YOUR_CLIENT_SECRET & grant_type=client_credentials
+### Step 3: Get Graph API Token  
+- Create a new **App Registration** in Entra.  
+- Assign it **Application.Read.All** (Application type) under Microsoft Graph.  
+- Create a **Client Secret**.  
 
-### Step 4: Parse Token
-Next we need to create a parse json step so we can grab our actually token string. Look for Step 4 schema in the repos "Schema" file.
+Add an **HTTP** action:
+- **Method**: POST  
+- **URL**:  
+  ```
+  https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/token
+  ```
+- **Body**:  
+  ```
+  client_id=YOUR_CLIENT_ID&scope=https://graph.microsoft.com/.default&client_secret=YOUR_CLIENT_SECRET&grant_type=client_credentials
+  ```
 
-### Step 5: Call App Secrets
-Lets create a new HTTP step and call it something like "Call App Secrets". This step is going to use a GET request to grab all of the Apps without our Entra environment. URL is below, header should be taking the body from our last step as our authorization token.
-URL : https://graph.microsoft.com/v1.0/applications?$select=displayName,passwordCredentials
+### Step 4: Parse Token  
+Add a **Parse JSON** step to extract the token.  
+Schema is in `schema/step-4-token.json`.
 
-### Step 6: Parse our HTTP Call
-We now need to parse our last step with a Parse JSON step. Content should be the body of our GET request. Look for Step 6 schema in the repos "Schema" file.
+### Step 5: Call Graph API for App Secrets  
+Add another **HTTP** GET step:  
+- **URL**:  
+  ```
+  https://graph.microsoft.com/v1.0/applications?$select=displayName,passwordCredentials
+  ```
+- **Headers**:  
+  - `Authorization: Bearer <access_token>` (from Step 4)
 
-### Step 7: Initialize Array
-As some of your app registrations may have multiple secrets in them we need a way to loop through and store all of those. To start we'll create an "initialize variables" step and call it something like allSecrets. Type should be an array.
+### Step 6: Parse Graph Response  
+Add another **Parse JSON** step using Step 5’s body.  
+Schema is in `schema/step-6-apps.json`.
 
-### Step 8: For Each Loop 1 : Loop Apps
-We're going to have 2 different loops. One that loops through all the apps and then one inside that loop that loops through all the secrets in each app. For our first loop (apps) we'll take the output from Step 6 as this will contain 
+### Step 7: Initialize Array  
+Add **Initialize Variable**:  
+- Name: `allSecrets`  
+- Type: `Array`  
+- Value: *(Leave blank)*
+
+### Step 8: For Each Loops  
+- Outer loop: iterate over all apps (from Step 6)  
+- Inner loop: iterate over `passwordCredentials`  
+- Inside inner loop: create an object with App Name, Secret Name, Expiration  
+- Append to `allSecrets` array
+
+### Step 9: Filter Expiring Secrets  
+Add **Filter array** step:  
+- **From**: `allSecrets`  
+- **Expression**:
+  ```js
+  and(
+    not(empty(item()?['endDateTime'])),
+    lessOrEquals(item()?['endDateTime'], addDays(utcNow(), 30))
+  )
+  ```
+
+### Step 10: Create HTML Table  
+Add **Create HTML Table** using filter result.  
+Include App Name, Secret Name, Expiration, Days Remaining.
+
+### Step 11: Compose Output  
+Use **Compose** to format the HTML with CSS and heading.
+
+### Step 12: Deploy to Storage Account  
+- Enable **Static Website Hosting** on a Storage Account  
+- Use **Create blob (V2)** step:  
+  - **Folder path**: `$web`  
+  - **Filename**: `index.html`  
+  - **Content**: output from Compose  
+  - **Content Type**: `text/html`
+
+### Step 13: Assign Managed Identity  
+- Enable **System-assigned Managed Identity** on your Logic App  
+- Go to Storage Account → Access Control (IAM) → Assign:  
+  - **Role**: `Storage Blob Data Contributor`  
+  - **Principal**: your Logic App
+
+After setup, you can visit your Storage Account static website to view the current secrets expiring soon.
+
+### Terraform Setup (COMING SOON)
+
 
 ---
